@@ -1,0 +1,301 @@
+###################################
+# Take Home Exam ZK, Assignment 1 #
+###################################
+
+# clear workspace
+graphics.off()
+rm(list=ls(all=TRUE))
+
+#Load packages 
+library(psych) 
+library(dplyr) 
+library(gsheet) 
+library(ggplot2) 
+library(car)
+library(lm.beta)
+
+# set the working directory
+setwd("~/Documents/Studium/Master/Semester_1/Advanced Scientific Methods/Subcourse 1/Take Home Exam ZK")
+
+# import data from github and saving the data
+data_zk_assignment1 <- read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class-2018/master/home_sample_1.csv")
+
+##############################################
+# Data management and descriptive statistics #
+##############################################
+
+View(data_zk_assignment1) #get a first overview of the data
+
+# check for irregularities in each variable
+
+describe(data_zk_assignment1$pain)
+hist(data_zk_assignment1$pain, breaks = 20)
+
+describe(data_zk_assignment1$age)
+hist(data_zk_assignment1$age, breaks = 20)
+
+describe(data_zk_assignment1$STAI_trait)
+hist(data_zk_assignment1$STAI_trait, breaks = 20)
+
+describe(data_zk_assignment1$pain_cat)
+hist(data_zk_assignment1$pain_cat, breaks = 20)
+
+describe(data_zk_assignment1$cortisol_serum)
+hist(data_zk_assignment1$cortisol_serum, breaks = 20)
+
+describe(data_zk_assignment1$cortisol_saliva)
+hist(data_zk_assignment1$cortisol_saliva, breaks = 20)
+
+describe(data_zk_assignment1$mindfulness)
+hist(data_zk_assignment1$mindfulness, breaks = 20)
+
+# I noticed that participants with the ID_112 and 146 have "mindfulness" values below 1, which should be a 
+# coding error. Lowest possible score is one -> will be excluded
+
+#########################
+# multivariate Outliers #
+#########################
+my_reg= lm (ID ~ sex + age + STAI_trait + pain_cat + cortisol_serum + mindfulness
+            ,data=data_zk_assignment1)
+#leverage
+lev<-hat(model.matrix(my_reg))
+plot(lev)
+data_zk_assignment1[lev>.15,]
+# two outliers become apparent, ID_28 and ID_90
+
+#mahalanobis distance
+N<-nrow(data_zk_assignment1)
+mahad<-(N-1)*(lev-1/N)
+qchisq(.999,df=6) # values greater than 20.515 are considered multivariate outleiers
+tail(sort(x=mahad),n=5)
+order(mahad,decreasing = T)[c(5,4,3,2,1)] #ID_28 and _ID_90 become apparent as well.
+
+##############################################
+# remove participants/multivariate outleiers #
+##############################################
+#create copy of data
+data_zk_assignment1_cleaned <- data_zk_assignment1
+
+# romove the four participants that were noticable in the checks above
+data_zk_assignment1_cleaned = data_zk_assignment1_cleaned[-which(data_zk_assignment1_cleaned[, "ID"] == "ID_112"), ]
+data_zk_assignment1_cleaned = data_zk_assignment1_cleaned[-which(data_zk_assignment1_cleaned[, "ID"] == "ID_146"), ]
+data_zk_assignment1_cleaned = data_zk_assignment1_cleaned[-which(data_zk_assignment1_cleaned[, "ID"] == "ID_28"), ]
+data_zk_assignment1_cleaned = data_zk_assignment1_cleaned[-which(data_zk_assignment1_cleaned[, "ID"] == "ID_90"), ]
+
+# more descriptive statistics #
+
+plot(data_zk_assignment1_cleaned$cortisol_serum, data_zk_assignment1_cleaned$cortisol_saliva)
+# cortisol saliva and serum seem to be very identical....
+cor(data_zk_assignment1_cleaned$cortisol_serum,data_zk_assignment1_cleaned$cortisol_saliva)
+
+summary(data_zk_assignment1_cleaned$sex)
+describe(data_zk_assignment1_cleaned)
+
+
+#####################################
+# Prediction with linear regression #
+#####################################
+
+###########
+# Model 1 #
+###########
+
+#create two plots to visualize our data how Age and Sex predict the pain level
+
+plot(pain ~ age, data = data_zk_assignment1_cleaned) #Plot for Pain
+abline(lm(pain ~ age, data = data_zk_assignment1_cleaned))
+#points(predict(mod1)~ age, data = data_zk_assignment1_cleaned, col = "red")
+
+plot(pain ~ sex, data = data_zk_assignment1_cleaned) #Plot for Sex
+abline(lm(pain ~ sex, data = data_zk_assignment1_cleaned))
+
+# run a regression analysis (Model 1) containing age and sex as predictors of pain
+mod1 <- lm(pain ~ age + sex, data = data_zk_assignment1_cleaned)
+mod1
+summary(mod1)
+
+#create Plot for age as a predictor for pain
+#ggplot(data_zk_assignment1_cleaned, aes(x = age, y = pain)) + geom_point() + 
+  #geom_smooth(method = "lm", formula = y ~ x)
+
+#ASSUMPTION CHECKING LINEAR REGRESSION#
+
+## 1 Multivariate normality assumption ##
+#QQ-Plot
+plot(mod1, which = 2)
+#skew and kurtosis testing (generally +/- 2 is working)
+describe(residuals(mod1))
+
+#Plot a Histogramm
+hist(residuals(mod1), breaks = 20)
+
+#Shapiro Wilk test 
+shapiro.test(residuals(mod1)) #not significant, therefore data is normally distributed
+
+## 2 Linearity assumption ##
+# Fitting our Model -> predicted values against actual values (we want linearity)
+fitted<- fitted.values(object = mod1)
+plot(x=fitted, y=data_zk_assignment1_cleaned$age, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+fitted<- fitted.values(object = mod1)
+plot(x=fitted, y=data_zk_assignment1_cleaned$sex, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+# predicted values against residuals
+plot(mod1, which = 1)
+
+#residual plot for ech predictor + Tukey test
+residualPlots(mod1) # Tukey test not significant so we have linearity
+
+## 3 Multicollinearity assumption ##
+# We do not want excess multicollinearity. Vif values of about 4 and more show signs of multicollinerity. 
+
+vif(mod1) #values show no sign of excess multicollinearity
+
+#show the correlations
+#pairs.panels(data_zk_assignment1_cleaned[,c("pain", "age", "sex")], col = "red", lm = T)
+
+
+## 4 Homoscedasticity assumption: homogeneity of variance ##
+# Plot Graph for Model 1
+plot(mod1, which = 3)
+
+#Nonconstant Variance test
+ncvTest(mod1) # is not significant -> homoheneity of variance
+
+# OUTLIERS
+# Check with the help of Cook's Distance if there are any influencial outlieres.
+plot(pain ~ age, data = data_zk_assignment1_cleaned)
+abline(mod1)
+
+plot(pain ~ sex, data = data_zk_assignment1_cleaned)
+abline(mod1)
+
+plot(mod1, which = 4) #calculating Cook's Distance. Value of 1 and above are critical
+
+## ASSESSING THE MODEL ## 
+
+sm1 = summary(mod1) 
+sm1
+AIC(mod1)
+confint(mod1) 
+lm.beta(mod1)
+
+###########
+# Model 2 #
+###########
+
+#create plots to visualize linear regression 
+
+plot(pain ~ STAI_trait, data = data_zk_assignment1_cleaned) #Plot for STAI_trait
+  abline(lm(pain ~ STAI_trait, data = data_zk_assignment1_cleaned))
+
+plot(pain ~ pain_cat, data = data_zk_assignment1_cleaned) #Plot for pain_cat
+  abline(lm(pain ~ pain_cat, data = data_zk_assignment1_cleaned))
+
+plot(pain ~ mindfulness, data = data_zk_assignment1_cleaned) #Plot for mindfulness
+  abline(lm(pain ~ mindfulness, data = data_zk_assignment1_cleaned))
+  
+plot(pain ~ cortisol_serum, data = data_zk_assignment1_cleaned) #Plot for cortisol_serum
+  abline(lm(pain ~ cortisol_serum, data = data_zk_assignment1_cleaned))
+  
+plot(pain ~ cortisol_saliva, data = data_zk_assignment1_cleaned) #Plot for cortisol_saliva
+  abline(lm(pain ~ cortisol_saliva, data = data_zk_assignment1_cleaned))
+
+# Building Model 2 with 6 predictors 
+# First with cortisol_saliva, but due to multicolliniarity excluded from model 2
+#mod2 <- lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum + cortisol_saliva, data = data_zk_assignment1_cleaned)
+mod2 <- lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum, data = data_zk_assignment1_cleaned)
+mod2
+summary(mod2)
+
+#ASSUMPTION CHECKING LINEAR REGRESSION#
+
+## 1 Multivariate normality assumption ##
+#QQ-Plot
+plot(mod2, which = 2)
+#skew and kurtosis testing (generally +/- 2 is working)
+describe(residuals(mod2))
+
+#Plot a Histogramm
+hist(residuals(mod2), breaks = 20)
+
+#Shapiro Wilk test 
+shapiro.test(residuals(mod2)) #not significant, therefore data is normally distributed
+
+## 2 Linearity assumption ##
+# Fitting our Model -> predicted values against actual values (we want linearity)
+fitted2<- fitted.values(object = mod2)
+plot(x=fitted2, y=data_zk_assignment1_cleaned$STAI_trait, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment1_cleaned$pain_cat, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+#plot(x=fitted2, y=data_zk_assignment1_cleaned$cortisol_saliva, xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment1_cleaned$cortisol_serum, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment1_cleaned$mindfulness, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+# predicted values against residuals
+plot(mod2, which = 1)
+
+#residual plot for ech predictor + Tukey test
+residualPlots(mod2) # Tukey test not significant so we have linearity
+
+## 3 Multicollinearity assumption ##
+# We do not want excess multicollinearity. Vif values of about 4 and more show signs of multicollinerity. 
+
+vif(mod2) #values of cortisol_serum and cortisol_saliva show excess multicollinearity. Decission to exlude cortisol_saliva.
+
+## 4 Homoscedasticity assumption: homogeneity of variance ##
+# Plot Graph for Model 2
+plot(mod2, which = 3)
+
+#Nonconstant Variance test
+ncvTest(mod2) # is not significant -> homoheneity of variance
+
+# OUTLIERS
+# Check with the help of Cook's Distance if there are any influencial outlieres.
+plot(pain ~ STAI_trait, data = data_zk_assignment1_cleaned)
+abline(mod2)
+
+plot(pain ~ pain_cat, data = data_zk_assignment1_cleaned)
+abline(mod2)
+
+plot(pain ~ cortisol_serum, data = data_zk_assignment1_cleaned)
+abline(mod2)
+
+plot(pain ~ mindfulness, data = data_zk_assignment1_cleaned)
+abline(mod2)
+
+plot(mod2, which = 4) #calculating Cook's Distance. Value of 1 and above are critical
+
+## ASSESSING THE MODEL ## 
+
+sm2 = summary(mod2) 
+sm2
+AIC(mod2)
+confint(mod2) 
+lm.beta(mod2)
+
+####################
+# Model Comparison #
+####################
+sm1
+sm2
+
+AIC(mod1)
+AIC(mod2) #smaller AIC means less error and better model fit, so in this case we accept the model with the smaller AIC (model2)
+
+confint(mod1) 
+lm.beta(mod1)
+confint(mod2) 
+lm.beta(mod2)
+
+# testing of significant differences of residual errors between both models
+anova(mod1,mod2)
