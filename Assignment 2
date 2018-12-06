@@ -1,0 +1,239 @@
+###################################
+# Take Home Exam ZK, Assignment 2 #
+###################################
+
+# clear workspace
+graphics.off()
+rm(list=ls(all=TRUE))
+
+#Load packages 
+library(psych) 
+library(dplyr) 
+library(gsheet) 
+library(ggplot2) 
+library(car)
+library(lm.beta)
+
+# set the working directory
+setwd("~/Documents/Studium/Master/Semester_1/Advanced Scientific Methods/Subcourse 1/Take Home Exam ZK")
+
+# import data from github and saving the data
+data_zk_assignment2 <- read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class-2018/master/home_sample_1.csv")
+
+##############################################
+# Data management and descriptive statistics #
+##############################################
+
+View(data_zk_assignment2) #get a first overview of the data
+
+# check for irregularities in each variable
+
+describe(data_zk_assignment2$weight)
+hist(data_zk_assignment2$weight, breaks = 20)
+
+describe(data_zk_assignment2$pain)
+hist(data_zk_assignment2$pain, breaks = 20)
+
+describe(data_zk_assignment2$age)
+hist(data_zk_assignment2$age, breaks = 20)
+
+describe(data_zk_assignment2$STAI_trait)
+hist(data_zk_assignment2$STAI_trait, breaks = 20)
+
+describe(data_zk_assignment2$pain_cat)
+hist(data_zk_assignment2$pain_cat, breaks = 20)
+
+describe(data_zk_assignment2$cortisol_serum)
+hist(data_zk_assignment2$cortisol_serum, breaks = 20)
+
+describe(data_zk_assignment2$cortisol_saliva)
+hist(data_zk_assignment2$cortisol_saliva, breaks = 20)
+
+describe(data_zk_assignment2$mindfulness)
+hist(data_zk_assignment2$mindfulness, breaks = 20)
+
+#########################
+# multivariate Outliers #
+#########################
+my_reg= lm (ID ~ sex + age + STAI_trait + pain_cat + cortisol_serum + mindfulness
+            ,data=data_zk_assignment2)
+#leverage
+lev<-hat(model.matrix(my_reg))
+plot(lev)
+data_zk_assignment2[lev>.15,]
+# two outliers become apparent, ID_28 and ID_90
+
+#mahalanobis distance
+N<-nrow(data_zk_assignment2)
+mahad<-(N-1)*(lev-1/N)
+qchisq(.999,df=6) # values greater than 20.515 are considered multivariate outleiers
+tail(sort(x=mahad),n=5)
+order(mahad,decreasing = T)[c(5,4,3,2,1)] #ID_28 and _ID_90 become apparent as well.
+
+##############################################
+# remove participants/multivariate outleiers #
+##############################################
+#create copy of data
+data_zk_assignment2_cleaned <- data_zk_assignment2
+
+# romove the four participants that were noticable in the checks above
+data_zk_assignment2_cleaned = data_zk_assignment2_cleaned[-which(data_zk_assignment2_cleaned[, "ID"] == "ID_112"), ]
+data_zk_assignment2_cleaned = data_zk_assignment2_cleaned[-which(data_zk_assignment2_cleaned[, "ID"] == "ID_146"), ]
+data_zk_assignment2_cleaned = data_zk_assignment2_cleaned[-which(data_zk_assignment2_cleaned[, "ID"] == "ID_28"), ]
+data_zk_assignment2_cleaned = data_zk_assignment2_cleaned[-which(data_zk_assignment2_cleaned[, "ID"] == "ID_90"), ]
+
+summary(data_zk_assignment2_cleaned)
+describe(data_zk_assignment2_cleaned)
+
+##############################
+# Backwards Regression Model #
+##############################
+
+#create plots to visualize linear regression 
+
+plot(pain ~ STAI_trait, data = data_zk_assignment2_cleaned) #Plot for STAI_trait
+abline(lm(pain ~ STAI_trait, data = data_zk_assignment2_cleaned))
+
+plot(pain ~ pain_cat, data = data_zk_assignment2_cleaned) #Plot for pain_cat
+abline(lm(pain ~ pain_cat, data = data_zk_assignment2_cleaned))
+
+plot(pain ~ mindfulness, data = data_zk_assignment2_cleaned) #Plot for mindfulness
+abline(lm(pain ~ mindfulness, data = data_zk_assignment2_cleaned))
+
+plot(pain ~ cortisol_serum, data = data_zk_assignment2_cleaned) #Plot for cortisol_serum
+abline(lm(pain ~ cortisol_serum, data = data_zk_assignment2_cleaned))
+
+plot(pain ~ cortisol_saliva, data = data_zk_assignment2_cleaned) #Plot for cortisol_saliva
+abline(lm(pain ~ cortisol_saliva, data = data_zk_assignment2_cleaned))
+
+plot(pain ~ weight, data = data_zk_assignment2_cleaned) #Plot for weight
+abline(lm(pain ~ weight, data = data_zk_assignment2_cleaned))
+
+# Building Model 2 with 7 predictors 
+# First with cortisol_saliva, but due to multicolliniarity excluded from model 2
+#mod2 <- lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum + cortisol_saliva, data = data_zk_assignment1_cleaned)
+mod2 <- lm(pain ~ age + sex + weight + STAI_trait + pain_cat + mindfulness + cortisol_serum, data = data_zk_assignment2_cleaned)
+mod2
+summary(mod2)
+
+#ASSUMPTION CHECKING LINEAR REGRESSION#
+
+## 1 Multivariate normality assumption ##
+#QQ-Plot
+plot(mod2, which = 2)
+#skew and kurtosis testing (generally +/- 2 is working)
+describe(residuals(mod2))
+
+#Plot a Histogramm
+hist(residuals(mod2), breaks = 20)
+
+#Shapiro Wilk test 
+shapiro.test(residuals(mod2)) #not significant, therefore data is normally distributed
+
+## 2 Linearity assumption ##
+# Fitting our Model -> predicted values against actual values (we want linearity)
+fitted2<- fitted.values(object = mod2)
+plot(x=fitted2, y=data_zk_assignment2_cleaned$STAI_trait, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment2_cleaned$pain_cat, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment2_cleaned$weight, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment1_cleaned$cortisol_serum, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+plot(x=fitted2, y=data_zk_assignment1_cleaned$mindfulness, 
+     xlab="Fitted Values", ylab = "Observed Values")
+
+# predicted values against residuals
+plot(mod2, which = 1)
+
+#residual plot for ech predictor + Tukey test
+residualPlots(mod2) # Tukey test not significant so we have linearity
+
+## 3 Multicollinearity assumption ##
+# We do not want excess multicollinearity. Vif values of about 4 and more show signs of multicollinerity. 
+
+vif(mod2) #no seigns of multicollinearity
+
+## 4 Homoscedasticity assumption: homogeneity of variance ##
+# Plot Graph for Model 2
+plot(mod2, which = 3)
+
+#Nonconstant Variance test
+ncvTest(mod2) # is not significant -> homoheneity of variance
+
+# OUTLIERS
+# Check with the help of Cook's Distance if there are any influencial outlieres.
+plot(pain ~ STAI_trait, data = data_zk_assignment2_cleaned)
+abline(mod2)
+
+plot(pain ~ pain_cat, data = data_zk_assignment2_cleaned)
+abline(mod2)
+
+plot(pain ~ cortisol_serum, data = data_zk_assignment2_cleaned)
+abline(mod2)
+
+plot(pain ~ mindfulness, data = data_zk_assignment2_cleaned)
+abline(mod2)
+
+plot(pain ~ weight, data = data_zk_assignment2_cleaned)
+abline(mod2)
+
+plot(mod2, which = 4) #calculating Cook's Distance. Value of 1 and above are critical
+
+################################
+# Running Backwards regression #
+################################
+
+mod_back_2 = step(mod2, direction = "backward")
+
+#create new model with the variables obtained by the backwards regression
+mod3bw <- lm(pain ~ age + sex + pain_cat + mindfulness + cortisol_serum, data = data_zk_assignment2_cleaned)
+mod3bw
+#recreate theory based model from Assignment 1
+mod3tb <- lm(pain ~ age + sex + STAI_trait + pain_cat + mindfulness + cortisol_serum, data = data_zk_assignment2_cleaned)
+mod3tb
+summary(mod3bw)
+
+# comparison of both models #
+#comparison mod2 (inkl. weight) and  and mod3bw
+anova(mod2,mod3bw)
+AIC(mod2)
+AIC(mod3bw)
+
+#coparison mod3 theory based (from Assignment 1) and mod3bw
+anova(mod3bw,mod3tb)
+summary(mod3bw)$adj.r.squared
+summary(mod3tb)$adj.r.squared
+AIC(mod3bw)
+AIC(mod3tb)
+
+confint(mod3bw) 
+lm.beta(mod3bw)
+
+
+
+#######################################
+# Testing both Models on new data set #
+#######################################
+
+#load new data
+data_zk_assignment2NEU <- read.csv("https://raw.githubusercontent.com/kekecsz/PSYP13_Data_analysis_class-2018/master/home_sample_2.csv")
+
+describe(data_zk_assignment2NEU)
+
+# calculate predicted values
+pred_test <- predict(mod3tb, data_zk_assignment2NEU) 
+pred_test_back <- predict(mod3bw, data_zk_assignment2NEU)
+
+# now we calculate the sum of squared residuals
+RSS_test = sum((data_zk_assignment2NEU[, "pain"] - pred_test)^2) 
+RSS_test_back = sum((data_zk_assignment2NEU[, "pain"] - pred_test_back)^2) #holds more error than original model!
+RSS_test
+RSS_test_back
+
+
